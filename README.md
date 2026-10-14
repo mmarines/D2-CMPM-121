@@ -1,6 +1,6 @@
 # D2 starter
 
-A minimal TypeScript/Vite browser project with Deno checks and GitHub Pages deployment.
+Max Marinescu, Zander Matthews
 
 ## Credits
 
