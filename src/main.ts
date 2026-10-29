@@ -57,8 +57,49 @@ const context = canvas.getContext("2d")!;
 
 app.style.display = "grid";
 app.style.placeItems = "center";
+app.style.gap = "1rem";
 app.style.padding = "2rem";
 app.append(canvas);
+
+const controls = document.createElement("div");
+controls.style.display = "flex";
+controls.style.gap = "0.75rem";
+controls.style.justifyContent = "center";
+controls.style.flexWrap = "wrap";
+
+const clearButton = document.createElement("button");
+clearButton.type = "button";
+clearButton.textContent = "Clear Pixels";
+clearButton.addEventListener("click", () => {
+  activeStroke = null;
+  isDrawing = false;
+  lastPoint = null;
+  context.clearRect(0, 0, canvas.width, canvas.height);
+});
+
+const clearDocumentButton = document.createElement("button");
+clearDocumentButton.type = "button";
+clearDocumentButton.textContent = "Clear Document";
+clearDocumentButton.addEventListener("click", () => {
+  documentCollection.strokes = [];
+  activeStroke = null;
+  isDrawing = false;
+  lastPoint = null;
+  context.clearRect(0, 0, canvas.width, canvas.height);
+});
+
+const redrawButton = document.createElement("button");
+redrawButton.type = "button";
+redrawButton.textContent = "Redraw";
+redrawButton.addEventListener("click", () => {
+  context.clearRect(0, 0, canvas.width, canvas.height);
+  for (const stroke of documentCollection.strokes) {
+    drawStroke(stroke);
+  }
+});
+
+controls.append(clearButton, clearDocumentButton, redrawButton);
+app.append(controls);
 
 let isDrawing = false;
 let activeStroke: Stroke | null = null;
@@ -92,12 +133,6 @@ function drawStroke(stroke: Stroke) {
 }
 
 function redrawDocument() {
-  context.clearRect(0, 0, canvas.width, canvas.height);
-
-  for (const stroke of documentCollection.strokes) {
-    drawStroke(stroke);
-  }
-
   if (activeStroke && activeStroke.points.length > 0) {
     drawStroke(activeStroke);
   }
