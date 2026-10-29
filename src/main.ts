@@ -1,4 +1,8 @@
 const app = document.querySelector<HTMLElement>("#app")!;
+app.style.display = "grid";
+app.style.placeItems = "center";
+app.style.gap = "1rem";
+app.style.padding = "2rem";
 
 type Point = {
   x: number;
@@ -55,10 +59,6 @@ canvas.style.touchAction = "none";
 
 const context = canvas.getContext("2d")!;
 
-app.style.display = "grid";
-app.style.placeItems = "center";
-app.style.gap = "1rem";
-app.style.padding = "2rem";
 app.append(canvas);
 
 const controls = document.createElement("div");
@@ -67,43 +67,88 @@ controls.style.gap = "0.75rem";
 controls.style.justifyContent = "center";
 controls.style.flexWrap = "wrap";
 
-const clearButton = document.createElement("button");
-clearButton.type = "button";
-clearButton.textContent = "Clear Pixels";
-clearButton.addEventListener("click", () => {
-  activeStroke = null;
-  isDrawing = false;
-  lastPoint = null;
-  context.clearRect(0, 0, canvas.width, canvas.height);
-});
-
 const clearDocumentButton = document.createElement("button");
 clearDocumentButton.type = "button";
 clearDocumentButton.textContent = "Clear Document";
 clearDocumentButton.addEventListener("click", () => {
+  if (documentCollection.strokes.length === 0) {
+    return;
+  }
+
+  undoStack.push(cloneStrokes(documentCollection.strokes));
   documentCollection.strokes = [];
+  redoStack.length = 0;
   activeStroke = null;
   isDrawing = false;
   lastPoint = null;
-  context.clearRect(0, 0, canvas.width, canvas.height);
+  renderDocument();
+  updateHistoryButtons();
 });
 
-const redrawButton = document.createElement("button");
-redrawButton.type = "button";
-redrawButton.textContent = "Redraw";
-redrawButton.addEventListener("click", () => {
-  context.clearRect(0, 0, canvas.width, canvas.height);
-  for (const stroke of documentCollection.strokes) {
-    drawStroke(stroke);
+const undoButton = document.createElement("button");
+undoButton.type = "button";
+undoButton.textContent = "Undo";
+undoButton.addEventListener("click", () => {
+  if (undoStack.length === 0) {
+    return;
   }
+
+  redoStack.push(cloneStrokes(documentCollection.strokes));
+  documentCollection.strokes = undoStack.pop()!;
+  activeStroke = null;
+  isDrawing = false;
+  lastPoint = null;
+  renderDocument();
+  updateHistoryButtons();
 });
 
-controls.append(clearButton, clearDocumentButton, redrawButton);
+const redoButton = document.createElement("button");
+redoButton.type = "button";
+redoButton.textContent = "Redo";
+redoButton.addEventListener("click", () => {
+  if (redoStack.length === 0) {
+    return;
+  }
+
+  undoStack.push(cloneStrokes(documentCollection.strokes));
+  documentCollection.strokes = redoStack.pop()!;
+  activeStroke = null;
+  isDrawing = false;
+  lastPoint = null;
+  renderDocument();
+  updateHistoryButtons();
+});
+
+controls.append(clearDocumentButton, undoButton, redoButton);
 app.append(controls);
 
 let isDrawing = false;
 let activeStroke: Stroke | null = null;
 let lastPoint: Point | null = null;
+const undoStack: Stroke[][] = [];
+const redoStack: Stroke[][] = [];
+
+function cloneStroke(stroke: Stroke): Stroke {
+  return {
+    id: stroke.id,
+    points: stroke.points.map((point) => ({ ...point })),
+    appearance: { ...stroke.appearance },
+  };
+}
+
+function cloneStrokes(strokes: Stroke[]): Stroke[] {
+  return strokes.map((stroke) => cloneStroke(stroke));
+}
+
+function updateHistoryButtons() {
+  const canUndo = undoStack.length > 0;
+  const canRedo = redoStack.length > 0;
+
+  undoButton.disabled = !canUndo;
+  undoButton.setAttribute("aria-disabled", String(!canUndo));
+  redoButton.disabled = !canRedo;
+  redoButton.setAttribute("aria-disabled", String(!canRedo));
+}
 
 function getCanvasPoint(event: PointerEvent): Point {
   const bounds = canvas.getBoundingClientRect();
@@ -132,7 +177,13 @@ function drawStroke(stroke: Stroke) {
   context.stroke();
 }
 
-function redrawDocument() {
+function renderDocument() {
+  context.clearRect(0, 0, canvas.width, canvas.height);
+
+  for (const stroke of documentCollection.strokes) {
+    drawStroke(stroke);
+  }
+
   if (activeStroke && activeStroke.points.length > 0) {
     drawStroke(activeStroke);
   }
@@ -147,14 +198,20 @@ function finishStroke(event: PointerEvent) {
     canvas.releasePointerCapture(event.pointerId);
   }
 
-  if (activeStroke.points.length > 1) {
-    documentCollection.strokes.push(activeStroke);
+  if (activeStroke.points.length > 0) {
+    undoStack.push(cloneStrokes(documentCollection.strokes));
+    documentCollection.strokes = [
+      ...documentCollection.strokes,
+      cloneStroke(activeStroke),
+    ];
+    redoStack.length = 0;
   }
 
   isDrawing = false;
   activeStroke = null;
   lastPoint = null;
-  redrawDocument();
+  renderDocument();
+  updateHistoryButtons();
 }
 
 canvas.addEventListener("pointerdown", (event) => {
@@ -169,7 +226,7 @@ canvas.addEventListener("pointerdown", (event) => {
   isDrawing = true;
   lastPoint = point;
   canvas.setPointerCapture(event.pointerId);
-  redrawDocument();
+  renderDocument();
 });
 
 canvas.addEventListener("pointermove", (event) => {
@@ -180,7 +237,7 @@ canvas.addEventListener("pointermove", (event) => {
   const point = getCanvasPoint(event);
   activeStroke.points.push(point);
   lastPoint = point;
-  redrawDocument();
+  renderDocument();
 });
 
 canvas.addEventListener("pointerup", finishStroke);
@@ -199,7 +256,7 @@ canvas.addEventListener("pointercancel", (event) => {
   isDrawing = false;
   activeStroke = null;
   lastPoint = null;
-  redrawDocument();
+  renderDocument();
 });
 
 app.setAttribute(
@@ -207,4 +264,5 @@ app.setAttribute(
   "Drawing application with retained document model",
 );
 
-redrawDocument();
+updateHistoryButtons();
+renderDocument();
