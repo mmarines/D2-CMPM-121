@@ -36,6 +36,7 @@ const toolAppearance: StrokeAppearance = {
   join: "round",
 };
 
+// drawing canvas settings
 const documentCollection: DocumentCollection = {
   width: 640,
   height: 480,
@@ -43,6 +44,7 @@ const documentCollection: DocumentCollection = {
   strokes: [],
 };
 
+// setup drawing canvas
 const canvas = document.createElement("canvas");
 canvas.width = documentCollection.width;
 canvas.height = documentCollection.height;
@@ -61,12 +63,13 @@ const context = canvas.getContext("2d")!;
 
 app.append(canvas);
 
-const controls = document.createElement("div");
-controls.style.display = "flex";
-controls.style.gap = "0.75rem";
-controls.style.justifyContent = "center";
-controls.style.flexWrap = "wrap";
+const historyControls = document.createElement("div");
+historyControls.style.display = "flex";
+historyControls.style.gap = "0.75rem";
+historyControls.style.justifyContent = "center";
+historyControls.style.flexWrap = "wrap";
 
+// setup clear button and clear logic
 const clearDocumentButton = document.createElement("button");
 clearDocumentButton.type = "button";
 clearDocumentButton.textContent = "Clear Document";
@@ -85,6 +88,7 @@ clearDocumentButton.addEventListener("click", () => {
   updateHistoryButtons();
 });
 
+// setup undo button and undo logic
 const undoButton = document.createElement("button");
 undoButton.type = "button";
 undoButton.textContent = "Undo";
@@ -102,6 +106,7 @@ undoButton.addEventListener("click", () => {
   updateHistoryButtons();
 });
 
+// setup redo button and redo logic
 const redoButton = document.createElement("button");
 redoButton.type = "button";
 redoButton.textContent = "Redo";
@@ -119,9 +124,37 @@ redoButton.addEventListener("click", () => {
   updateHistoryButtons();
 });
 
-controls.append(clearDocumentButton, undoButton, redoButton);
-app.append(controls);
+// actually add history controlls to the page
+historyControls.append(clearDocumentButton, undoButton, redoButton);
+app.append(historyControls);
 
+// setup stoke contolls
+const strokeControlls = document.createElement("div");
+strokeControlls.style.display = "flex";
+strokeControlls.style.alignItems = "center";
+strokeControlls.style.gap = "5px";
+
+// stroke width text
+const strokeWidthText = document.createElement("span");
+strokeWidthText.textContent = "Stroke Thickness: 4";
+
+// setup stroke thickness slider and its logic
+const strokeWidthSlider = document.createElement("input");
+strokeWidthSlider.type = "range";
+strokeWidthSlider.min = "1";
+strokeWidthSlider.max = "20";
+strokeWidthSlider.value = "4";
+strokeWidthSlider.step = "1";
+strokeWidthSlider.addEventListener("input", () => {
+  strokeWidthText.textContent = "Stroke Thickness: " + strokeWidthSlider.value;
+  toolAppearance.width = parseInt(strokeWidthSlider.value, 10);
+});
+
+// actually add stroke controlls to the page
+strokeControlls.append(strokeWidthText, strokeWidthSlider);
+app.append(strokeControlls);
+
+// drawing vars
 let isDrawing = false;
 let activeStroke: Stroke | null = null;
 let lastPoint: Point | null = null;
@@ -189,6 +222,7 @@ function renderDocument() {
   }
 }
 
+// finish stroke capture
 function finishStroke(event: PointerEvent) {
   if (!isDrawing || !activeStroke) {
     return;
@@ -214,10 +248,13 @@ function finishStroke(event: PointerEvent) {
   updateHistoryButtons();
 }
 
+// start stroke capture
 canvas.addEventListener("pointerdown", (event) => {
   event.preventDefault();
 
   const point = getCanvasPoint(event);
+  //toolAppearance.width = Math.floor(Math.random() * (10 - 1) + 1); // random test width
+
   activeStroke = {
     id: crypto.randomUUID(),
     points: [point],
@@ -229,6 +266,7 @@ canvas.addEventListener("pointerdown", (event) => {
   renderDocument();
 });
 
+// continued capture of stroke
 canvas.addEventListener("pointermove", (event) => {
   if (!isDrawing || !activeStroke || !lastPoint) {
     return;
@@ -240,14 +278,15 @@ canvas.addEventListener("pointermove", (event) => {
   renderDocument();
 });
 
+// detections to stop capturing stroke
 canvas.addEventListener("pointerup", finishStroke);
-
 canvas.addEventListener("pointerleave", (event) => {
   if (isDrawing && !canvas.hasPointerCapture(event.pointerId)) {
     finishStroke(event);
   }
 });
 
+// cancle stroke
 canvas.addEventListener("pointercancel", (event) => {
   if (canvas.hasPointerCapture(event.pointerId)) {
     canvas.releasePointerCapture(event.pointerId);
