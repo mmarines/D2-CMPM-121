@@ -55,21 +55,21 @@ const tools: Tool[] = [
   },
   {
     id: "sticker-star",
-    name: "",
+    name: "⭐",
     type: "sticker",
     content: "⭐",
-    fontSize: 32,
+    fontSize: 256,
   },
   {
     id: "sticker-heart",
-    name: "",
+    name: "❤️",
     type: "sticker",
-    content: "💖",
+    content: "❤️",
     fontSize: 32,
   },
   {
     id: "sticker-fire",
-    name: "",
+    name: "🔥",
     type: "sticker",
     content: "🔥",
     fontSize: 32,
@@ -204,16 +204,18 @@ toolPalette.style.flexWrap = "wrap";
 app.append(toolPalette);
 
 function renderToolPalette() {
-  toolPalette.innerHTML = ""; // Clear existing buttons before re-rendering
+  toolPalette.innerHTML = "";
 
   for (const tool of tools) {
     const toolButton = document.createElement("button");
     toolButton.type = "button";
 
     // label buttons
-    toolButton.textContent = tool.type === "sticker"
-      ? `${tool.content}`
-      : tool.name;
+    if (tool.type === "sticker") {
+      toolButton.textContent = tool.content || "⭐";
+    } else {
+      toolButton.textContent = `🖊️ ${tool.appearance?.width}`;
+    }
 
     // highlight the currently active tool visually
     if (tool === activeTool) {
@@ -229,74 +231,151 @@ function renderToolPalette() {
     toolButton.addEventListener("click", () => {
       activeTool = tool;
 
-      // if the user clicks a pen tool, sync the slider/color picker to match it
+      // if the user clicks a pen tool, sync setting appearance
       if (tool.type === "pen" && tool.appearance) {
         toolAppearance.width = tool.appearance.width;
         toolAppearance.color = tool.appearance.color;
-        strokeWidthSlider.value = String(tool.appearance.width);
-        strokeWidthText.textContent = "Stroke Thickness: " +
-          tool.appearance.width;
-        colorPicker.value = tool.appearance.color;
       }
 
-      renderToolPalette(); // Re-render palette to update active highlights
+      renderToolPalette(); // force new render for highlights
+      renderContextualUI();
     });
 
     toolPalette.append(toolButton);
   }
 }
 
-// setup stoke contolls
-const strokeControlls = document.createElement("div");
-strokeControlls.style.display = "flex";
-strokeControlls.style.alignItems = "center";
-strokeControlls.style.gap = "5px";
+// setup dynamic container for customizing tools based on what kind of tool is selected
+const contextualControlsContainer = document.createElement("div");
+contextualControlsContainer.style.display = "flex";
+contextualControlsContainer.style.justifyContent = "center";
+contextualControlsContainer.style.alignItems = "center";
+contextualControlsContainer.style.gap = "0.75rem";
+contextualControlsContainer.style.marginTop = "0.5rem";
+app.append(contextualControlsContainer);
 
-// stroke width text
-const strokeWidthText = document.createElement("span");
-strokeWidthText.textContent = "Stroke Thickness: 4";
+// function that renders the correct UI panel based on whether activeTool is a pen or a sticker (should prob rename)
+function renderContextualUI() {
+  contextualControlsContainer.innerHTML = "";
 
-// setup stroke thickness slider and its logic
-const strokeWidthSlider = document.createElement("input");
-strokeWidthSlider.type = "range";
-strokeWidthSlider.min = "1";
-strokeWidthSlider.max = "30";
-strokeWidthSlider.value = "4";
-strokeWidthSlider.step = "1";
-strokeWidthSlider.addEventListener("input", () => {
-  strokeWidthText.textContent = "Stroke Thickness: " + strokeWidthSlider.value;
-  const width = parseInt(strokeWidthSlider.value, 10);
-  toolAppearance.width = width;
-  if (activeTool.type === "pen" && activeTool.appearance) {
-    activeTool.appearance.width = width;
+  if (activeTool.type === "pen") {
+    // pen setttings UI
+    const penControlsDiv = document.createElement("div");
+    penControlsDiv.style.display = "flex";
+    penControlsDiv.style.alignItems = "center";
+    penControlsDiv.style.gap = "8px";
+
+    const strokeWidthText = document.createElement("span");
+    strokeWidthText.textContent = `Stroke Thickness: ${
+      activeTool.appearance?.width || 4
+    }`;
+
+    const strokeWidthSlider = document.createElement("input");
+    strokeWidthSlider.type = "range";
+    strokeWidthSlider.min = "1";
+    strokeWidthSlider.max = "20";
+    strokeWidthSlider.value = String(activeTool.appearance?.width || 4);
+    strokeWidthSlider.step = "1";
+    strokeWidthSlider.addEventListener("input", () => {
+      strokeWidthText.textContent = "Stroke Thickness: " +
+        strokeWidthSlider.value;
+      const width = parseInt(strokeWidthSlider.value, 10);
+      toolAppearance.width = width;
+      if (activeTool.appearance) {
+        activeTool.appearance.width = width;
+      }
+      renderToolPalette();
+    });
+
+    const colorLabel = document.createElement("span");
+    colorLabel.textContent = "Pen Color:";
+
+    const colorPicker = document.createElement("input");
+    colorPicker.type = "color";
+    colorPicker.value = activeTool.appearance?.color || "#000000";
+    toolAppearance.color = colorPicker.value;
+    colorPicker.addEventListener("input", (e) => {
+      const selectedColor = (e.target as HTMLInputElement).value;
+      toolAppearance.color = selectedColor;
+      if (activeTool.appearance) {
+        activeTool.appearance.color = selectedColor;
+      }
+    });
+
+    penControlsDiv.append(
+      strokeWidthText,
+      strokeWidthSlider,
+      colorLabel,
+      colorPicker,
+    );
+    contextualControlsContainer.append(penControlsDiv);
+  } else if (activeTool.type === "sticker") {
+    const stickerControlsDiv = document.createElement("div");
+    stickerControlsDiv.style.display = "flex";
+    stickerControlsDiv.style.alignItems = "center";
+    stickerControlsDiv.style.gap = "8px";
+
+    const editLabel = document.createElement("span");
+    editLabel.textContent = "Edit Sticker:";
+
+    const stickerEditInput = document.createElement("input");
+    stickerEditInput.type = "text";
+    stickerEditInput.value = activeTool.content || "";
+    stickerEditInput.maxLength = 10;
+    stickerEditInput.style.padding = "4px 8px";
+
+    // Modify current sticker button live as the user types
+    stickerEditInput.addEventListener("input", () => {
+      activeTool.content = stickerEditInput.value;
+      activeTool.name = stickerEditInput.value;
+      renderToolPalette();
+    });
+
+    const currentSize = activeTool.fontSize || 32;
+
+    const sizeText = document.createElement("span");
+    sizeText.textContent = `Size: ${currentSize}px`;
+
+    const sizeSlider = document.createElement("input");
+    sizeSlider.type = "range";
+    sizeSlider.min = "4";
+    sizeSlider.max = "256";
+    sizeSlider.value = String(currentSize);
+    sizeSlider.step = "1";
+
+    sizeSlider.addEventListener("input", () => {
+      const selectedSize = parseInt(sizeSlider.value, 10);
+      activeTool.fontSize = selectedSize;
+      sizeText.textContent = `Size: ${selectedSize}px`;
+    });
+
+    const addNewButton = document.createElement("button");
+    addNewButton.type = "button";
+    addNewButton.textContent = "Add New Sticker";
+    addNewButton.addEventListener("click", () => {
+      const newCustomTool: Tool = {
+        id: `custom-sticker-${crypto.randomUUID()}`,
+        name: "✅",
+        type: "sticker",
+        content: "✅",
+        fontSize: 32,
+      };
+      tools.push(newCustomTool);
+      activeTool = newCustomTool;
+      renderToolPalette();
+      renderContextualUI();
+    });
+
+    stickerControlsDiv.append(
+      editLabel,
+      stickerEditInput,
+      sizeText,
+      sizeSlider,
+      addNewButton,
+    );
+    contextualControlsContainer.append(stickerControlsDiv);
   }
-});
-
-// setup stroke color picker text
-const colorLabel = document.createElement("span");
-colorLabel.textContent = "Pen Color:";
-
-// setup the color picker and its logic
-const colorPicker = document.createElement("input");
-colorPicker.type = "color";
-colorPicker.value = "#000000"; // Default color (black)
-toolAppearance.color = colorPicker.value; // set color to ensure no bug
-colorPicker.addEventListener("input", (e) => {
-  const selectedColor = (e.target as HTMLInputElement).value;
-  toolAppearance.color = selectedColor;
-  if (activeTool.type === "pen" && activeTool.appearance) {
-    activeTool.appearance.color = selectedColor;
-  }
-});
-
-// actually add stroke controlls to the page
-strokeControlls.append(
-  strokeWidthText,
-  strokeWidthSlider,
-  colorLabel,
-  colorPicker,
-);
-app.append(strokeControlls);
+}
 
 // drawing vars
 let isDrawing = false;
@@ -364,7 +443,7 @@ function drawItem(item: DrawingItem) {
     context.strokeStyle = item.appearance.color;
     context.stroke();
   } else if (item.kind === "sticker") {
-    // code for now untill there is better render stuff for stickers
+    // render them sicker
     context.font = `${item.fontSize || 32}px sans-serif`;
     context.textAlign = "center";
     context.textBaseline = "middle";
@@ -492,3 +571,4 @@ app.setAttribute(
 updateHistoryButtons();
 renderDocument();
 renderToolPalette();
+renderContextualUI();
