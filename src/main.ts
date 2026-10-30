@@ -16,20 +16,6 @@ type StrokeAppearance = {
   join: CanvasLineJoin;
 };
 
-type Stroke = {
-  id: string;
-  points: Point[];
-  appearance: StrokeAppearance;
-};
-
-const toolAppearance: StrokeAppearance = {
-  color: "#111827",
-  width: 4,
-  cap: "round",
-  join: "round",
-};
-
-// tool data type
 type Tool = {
   id: string;
   name: string;
@@ -39,53 +25,13 @@ type Tool = {
   fontSize?: number;
 };
 
-// holds all the tools, is intitialized with the preset tools
-const tools: Tool[] = [
-  {
-    id: "thin-marker",
-    name: "Marker 1",
-    type: "pen",
-    appearance: { color: "#111827", width: 4, cap: "round", join: "round" },
-  },
-  {
-    id: "thick-marker",
-    name: "Marker 2",
-    type: "pen",
-    appearance: { color: "#111827", width: 12, cap: "round", join: "round" },
-  },
-  {
-    id: "sticker-star",
-    name: "⭐",
-    type: "sticker",
-    content: "⭐",
-    fontSize: 256,
-  },
-  {
-    id: "sticker-heart",
-    name: "❤️",
-    type: "sticker",
-    content: "❤️",
-    fontSize: 32,
-  },
-  {
-    id: "sticker-fire",
-    name: "🔥",
-    type: "sticker",
-    content: "🔥",
-    fontSize: 32,
-  },
-];
-
-// Track the currently selected tool (defaults to the first tool)
-let activeTool: Tool = tools[0];
-
-// two types of canvas items to be combined and stored as DrawingItems
 type PathItem = {
   kind: "path";
   id: string;
   points: Point[];
   appearance: StrokeAppearance;
 };
+
 type StickerItem = {
   kind: "sticker";
   id: string;
@@ -94,6 +40,7 @@ type StickerItem = {
   content: string;
   fontSize?: number;
 };
+
 type DrawingItem = PathItem | StickerItem;
 
 type DocumentCollection = {
@@ -103,7 +50,110 @@ type DocumentCollection = {
   items: DrawingItem[];
 };
 
-// drawing canvas settings
+const DEFAULT_PEN_APPEARANCE: StrokeAppearance = {
+  color: "#111827",
+  width: 4,
+  cap: "round",
+  join: "round",
+};
+
+const DEFAULT_STICKER_CONTENT = "⭐";
+const DEFAULT_STICKER_SIZE = 48;
+
+const toolAppearance: StrokeAppearance = { ...DEFAULT_PEN_APPEARANCE };
+
+class ToolCatalog {
+  readonly presetTools: Tool[] = [
+    {
+      id: "thin-marker",
+      name: "Thin Marker",
+      type: "pen",
+      appearance: { ...DEFAULT_PEN_APPEARANCE },
+    },
+    {
+      id: "bold-marker",
+      name: "Bold Marker",
+      type: "pen",
+      appearance: {
+        ...DEFAULT_PEN_APPEARANCE,
+        width: 12,
+      },
+    },
+    {
+      id: "sticker-star",
+      name: "Star Sticker",
+      type: "sticker",
+      content: "⭐",
+      fontSize: 48,
+    },
+    {
+      id: "sticker-heart",
+      name: "Heart Sticker",
+      type: "sticker",
+      content: "💗",
+      fontSize: 32,
+    },
+    {
+      id: "sticker-fire",
+      name: "Fire Sticker",
+      type: "sticker",
+      content: "🔥",
+      fontSize: 32,
+    },
+  ];
+
+  readonly customTools: Tool[] = [];
+  activeTool: Tool;
+
+  constructor() {
+    this.activeTool = this.presetTools[0];
+  }
+
+  get tools(): Tool[] {
+    return [...this.presetTools, ...this.customTools];
+  }
+
+  getDisplayLabel(tool: Tool): string {
+    if (tool.type === "pen") {
+      return `${tool.name} · ${tool.appearance?.width ?? 4}px`;
+    }
+
+    return `${tool.content ?? DEFAULT_STICKER_CONTENT} · ${
+      tool.fontSize ?? DEFAULT_STICKER_SIZE
+    }px`;
+  }
+
+  select(tool: Tool): void {
+    this.activeTool = tool;
+
+    if (tool.type === "pen" && tool.appearance) {
+      toolAppearance.color = tool.appearance.color;
+      toolAppearance.width = tool.appearance.width;
+      toolAppearance.cap = tool.appearance.cap;
+      toolAppearance.join = tool.appearance.join;
+    }
+  }
+
+  addCustomSticker(
+    content = DEFAULT_STICKER_CONTENT,
+    size = DEFAULT_STICKER_SIZE,
+  ): Tool {
+    const customTool: Tool = {
+      id: `custom-sticker-${crypto.randomUUID()}`,
+      name: content,
+      type: "sticker",
+      content,
+      fontSize: size,
+    };
+
+    this.customTools.push(customTool);
+    this.select(customTool);
+    return customTool;
+  }
+}
+
+const toolCatalog = new ToolCatalog();
+
 const documentCollection: DocumentCollection = {
   width: 640,
   height: 480,
@@ -111,7 +161,6 @@ const documentCollection: DocumentCollection = {
   items: [],
 };
 
-// setup drawing canvas
 const canvas = document.createElement("canvas");
 canvas.width = documentCollection.width;
 canvas.height = documentCollection.height;
@@ -127,7 +176,6 @@ canvas.style.cursor = "crosshair";
 canvas.style.touchAction = "none";
 
 const context = canvas.getContext("2d")!;
-
 app.append(canvas);
 
 const historyControls = document.createElement("div");
@@ -136,7 +184,6 @@ historyControls.style.gap = "0.75rem";
 historyControls.style.justifyContent = "center";
 historyControls.style.flexWrap = "wrap";
 
-// setup clear button and clear logic
 const clearDocumentButton = document.createElement("button");
 clearDocumentButton.type = "button";
 clearDocumentButton.textContent = "Clear Document";
@@ -145,9 +192,8 @@ clearDocumentButton.addEventListener("click", () => {
     return;
   }
 
-  undoStack.push(cloneDrawingItems(documentCollection.items));
+  historyManager.commit(documentCollection.items);
   documentCollection.items = [];
-  redoStack.length = 0;
   activeItem = null;
   isDrawing = false;
   lastPoint = null;
@@ -155,17 +201,16 @@ clearDocumentButton.addEventListener("click", () => {
   updateHistoryButtons();
 });
 
-// setup undo button and undo logic
 const undoButton = document.createElement("button");
 undoButton.type = "button";
 undoButton.textContent = "Undo";
+undoButton.title = "Undo the last completed action";
 undoButton.addEventListener("click", () => {
-  if (undoStack.length === 0) {
+  if (!historyManager.canUndo) {
     return;
   }
 
-  redoStack.push(cloneDrawingItems(documentCollection.items));
-  documentCollection.items = undoStack.pop()!;
+  documentCollection.items = historyManager.undo(documentCollection.items);
   activeItem = null;
   isDrawing = false;
   lastPoint = null;
@@ -173,17 +218,16 @@ undoButton.addEventListener("click", () => {
   updateHistoryButtons();
 });
 
-// setup redo button and redo logic
 const redoButton = document.createElement("button");
 redoButton.type = "button";
 redoButton.textContent = "Redo";
+redoButton.title = "Restore the last undone action";
 redoButton.addEventListener("click", () => {
-  if (redoStack.length === 0) {
+  if (!historyManager.canRedo) {
     return;
   }
 
-  undoStack.push(cloneDrawingItems(documentCollection.items));
-  documentCollection.items = redoStack.pop()!;
+  documentCollection.items = historyManager.redo(documentCollection.items);
   activeItem = null;
   isDrawing = false;
   lastPoint = null;
@@ -191,38 +235,13 @@ redoButton.addEventListener("click", () => {
   updateHistoryButtons();
 });
 
-// setup PNG export button and logic
 const exportButton = document.createElement("button");
 exportButton.type = "button";
 exportButton.textContent = "Export as PNG";
 exportButton.addEventListener("click", () => {
-  const scale = 2;
-  const exportCanvas = document.createElement("canvas");
-  exportCanvas.width = documentCollection.width * scale;
-  exportCanvas.height = documentCollection.height * scale;
-  const exportCtx = exportCanvas.getContext("2d")!;
-  // map document coordinates to the larger export canvas dimensions
-  exportCtx.scale(scale, scale);
-
-  // replay committed command objects against the export context
-  for (const item of documentCollection.items) {
-    drawItem(item, exportCtx);
-  }
-
-  exportCanvas.toBlob((blob) => {
-    if (!blob) return;
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement("a");
-    link.href = url;
-    link.download = "drawing-export.png";
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-    URL.revokeObjectURL(url);
-  }, "image/png");
+  renderer.exportAsPng(documentCollection.items, "drawing-export.png");
 });
 
-// actually add history controlls to the page (and also the export button)
 historyControls.append(
   clearDocumentButton,
   undoButton,
@@ -231,7 +250,6 @@ historyControls.append(
 );
 app.append(historyControls);
 
-// setup tool pallet
 const toolPalette = document.createElement("div");
 toolPalette.style.display = "flex";
 toolPalette.style.gap = "0.5rem";
@@ -242,19 +260,13 @@ app.append(toolPalette);
 function renderToolPalette() {
   toolPalette.innerHTML = "";
 
-  for (const tool of tools) {
+  for (const tool of toolCatalog.tools) {
     const toolButton = document.createElement("button");
     toolButton.type = "button";
+    toolButton.textContent = toolCatalog.getDisplayLabel(tool);
+    toolButton.title = tool.name;
 
-    // label buttons
-    if (tool.type === "sticker") {
-      toolButton.textContent = tool.content || "⭐";
-    } else {
-      toolButton.textContent = `🖊️ ${tool.appearance?.width}`;
-    }
-
-    // highlight the currently active tool visually
-    if (tool === activeTool) {
+    if (tool === toolCatalog.activeTool) {
       toolButton.style.border = "2px solid #2563eb";
       toolButton.style.backgroundColor = "#eff6ff";
       toolButton.style.fontWeight = "bold";
@@ -263,17 +275,9 @@ function renderToolPalette() {
       toolButton.style.backgroundColor = "#f9fafb";
     }
 
-    // clicking tool = select it
     toolButton.addEventListener("click", () => {
-      activeTool = tool;
-
-      // if the user clicks a pen tool, sync setting appearance
-      if (tool.type === "pen" && tool.appearance) {
-        toolAppearance.width = tool.appearance.width;
-        toolAppearance.color = tool.appearance.color;
-      }
-
-      renderToolPalette(); // force new render for highlights
+      toolCatalog.select(tool);
+      renderToolPalette();
       renderContextualUI();
     });
 
@@ -281,7 +285,6 @@ function renderToolPalette() {
   }
 }
 
-// setup dynamic container for customizing tools based on what kind of tool is selected
 const contextualControlsContainer = document.createElement("div");
 contextualControlsContainer.style.display = "flex";
 contextualControlsContainer.style.justifyContent = "center";
@@ -290,12 +293,10 @@ contextualControlsContainer.style.gap = "0.75rem";
 contextualControlsContainer.style.marginTop = "0.5rem";
 app.append(contextualControlsContainer);
 
-// function that renders the correct UI panel based on whether activeTool is a pen or a sticker (should prob rename)
 function renderContextualUI() {
   contextualControlsContainer.innerHTML = "";
 
-  if (activeTool.type === "pen") {
-    // pen setttings UI
+  if (toolCatalog.activeTool.type === "pen") {
     const penControlsDiv = document.createElement("div");
     penControlsDiv.style.display = "flex";
     penControlsDiv.style.alignItems = "center";
@@ -303,22 +304,23 @@ function renderContextualUI() {
 
     const strokeWidthText = document.createElement("span");
     strokeWidthText.textContent = `Stroke Thickness: ${
-      activeTool.appearance?.width || 4
+      toolCatalog.activeTool.appearance?.width ?? 4
     }`;
 
     const strokeWidthSlider = document.createElement("input");
     strokeWidthSlider.type = "range";
     strokeWidthSlider.min = "1";
     strokeWidthSlider.max = "20";
-    strokeWidthSlider.value = String(activeTool.appearance?.width || 4);
     strokeWidthSlider.step = "1";
+    strokeWidthSlider.value = String(
+      toolCatalog.activeTool.appearance?.width ?? DEFAULT_PEN_APPEARANCE.width,
+    );
     strokeWidthSlider.addEventListener("input", () => {
-      strokeWidthText.textContent = "Stroke Thickness: " +
-        strokeWidthSlider.value;
-      const width = parseInt(strokeWidthSlider.value, 10);
+      const width = Number.parseInt(strokeWidthSlider.value, 10);
+      strokeWidthText.textContent = `Stroke Thickness: ${width}`;
       toolAppearance.width = width;
-      if (activeTool.appearance) {
-        activeTool.appearance.width = width;
+      if (toolCatalog.activeTool.appearance) {
+        toolCatalog.activeTool.appearance.width = width;
       }
       renderToolPalette();
     });
@@ -328,13 +330,13 @@ function renderContextualUI() {
 
     const colorPicker = document.createElement("input");
     colorPicker.type = "color";
-    colorPicker.value = activeTool.appearance?.color || "#000000";
-    toolAppearance.color = colorPicker.value;
-    colorPicker.addEventListener("input", (e) => {
-      const selectedColor = (e.target as HTMLInputElement).value;
+    colorPicker.value = toolCatalog.activeTool.appearance?.color ?? "#111827";
+    colorPicker.addEventListener("input", (event) => {
+      const target = event.target as HTMLInputElement;
+      const selectedColor = target.value;
       toolAppearance.color = selectedColor;
-      if (activeTool.appearance) {
-        activeTool.appearance.color = selectedColor;
+      if (toolCatalog.activeTool.appearance) {
+        toolCatalog.activeTool.appearance.color = selectedColor;
       }
     });
 
@@ -345,80 +347,200 @@ function renderContextualUI() {
       colorPicker,
     );
     contextualControlsContainer.append(penControlsDiv);
-  } else if (activeTool.type === "sticker") {
-    const stickerControlsDiv = document.createElement("div");
-    stickerControlsDiv.style.display = "flex";
-    stickerControlsDiv.style.alignItems = "center";
-    stickerControlsDiv.style.gap = "8px";
+    return;
+  }
 
-    const editLabel = document.createElement("span");
-    editLabel.textContent = "Edit Sticker:";
+  const stickerControlsDiv = document.createElement("div");
+  stickerControlsDiv.style.display = "flex";
+  stickerControlsDiv.style.alignItems = "center";
+  stickerControlsDiv.style.gap = "8px";
 
-    const stickerEditInput = document.createElement("input");
-    stickerEditInput.type = "text";
-    stickerEditInput.value = activeTool.content || "";
-    stickerEditInput.maxLength = 10;
-    stickerEditInput.style.padding = "4px 8px";
+  const editLabel = document.createElement("span");
+  editLabel.textContent = "Edit Sticker:";
 
-    // Modify current sticker button live as the user types
-    stickerEditInput.addEventListener("input", () => {
-      activeTool.content = stickerEditInput.value;
-      activeTool.name = stickerEditInput.value;
-      renderToolPalette();
-    });
+  const stickerEditInput = document.createElement("input");
+  stickerEditInput.type = "text";
+  stickerEditInput.value = toolCatalog.activeTool.content ||
+    DEFAULT_STICKER_CONTENT;
+  stickerEditInput.maxLength = 10;
+  stickerEditInput.style.padding = "4px 8px";
+  stickerEditInput.addEventListener("input", () => {
+    toolCatalog.activeTool.content = stickerEditInput.value ||
+      DEFAULT_STICKER_CONTENT;
+    toolCatalog.activeTool.name = stickerEditInput.value ||
+      DEFAULT_STICKER_CONTENT;
+    renderToolPalette();
+  });
 
-    const currentSize = activeTool.fontSize || 32;
+  const currentSize = toolCatalog.activeTool.fontSize ?? DEFAULT_STICKER_SIZE;
 
-    const sizeText = document.createElement("span");
-    sizeText.textContent = `Size: ${currentSize}px`;
+  const sizeText = document.createElement("span");
+  sizeText.textContent = `Size: ${currentSize}px`;
 
-    const sizeSlider = document.createElement("input");
-    sizeSlider.type = "range";
-    sizeSlider.min = "4";
-    sizeSlider.max = "256";
-    sizeSlider.value = String(currentSize);
-    sizeSlider.step = "1";
+  const sizeSlider = document.createElement("input");
+  sizeSlider.type = "range";
+  sizeSlider.min = "12";
+  sizeSlider.max = "128";
+  sizeSlider.step = "1";
+  sizeSlider.value = String(currentSize);
+  sizeSlider.addEventListener("input", () => {
+    const selectedSize = Number.parseInt(sizeSlider.value, 10);
+    toolCatalog.activeTool.fontSize = selectedSize;
+    sizeText.textContent = `Size: ${selectedSize}px`;
+  });
 
-    sizeSlider.addEventListener("input", () => {
-      const selectedSize = parseInt(sizeSlider.value, 10);
-      activeTool.fontSize = selectedSize;
-      sizeText.textContent = `Size: ${selectedSize}px`;
-    });
-
-    const addNewButton = document.createElement("button");
-    addNewButton.type = "button";
-    addNewButton.textContent = "Add New Sticker";
-    addNewButton.addEventListener("click", () => {
-      const newCustomTool: Tool = {
-        id: `custom-sticker-${crypto.randomUUID()}`,
-        name: "✅",
-        type: "sticker",
-        content: "✅",
-        fontSize: 32,
-      };
-      tools.push(newCustomTool);
-      activeTool = newCustomTool;
-      renderToolPalette();
-      renderContextualUI();
-    });
-
-    stickerControlsDiv.append(
-      editLabel,
-      stickerEditInput,
-      sizeText,
-      sizeSlider,
-      addNewButton,
+  const addNewButton = document.createElement("button");
+  addNewButton.type = "button";
+  addNewButton.textContent = "Add New Sticker";
+  addNewButton.addEventListener("click", () => {
+    const customSticker = toolCatalog.addCustomSticker(
+      DEFAULT_STICKER_CONTENT,
+      DEFAULT_STICKER_SIZE,
     );
-    contextualControlsContainer.append(stickerControlsDiv);
+    toolCatalog.select(customSticker);
+    renderToolPalette();
+    renderContextualUI();
+  });
+
+  stickerControlsDiv.append(
+    editLabel,
+    stickerEditInput,
+    sizeText,
+    sizeSlider,
+    addNewButton,
+  );
+  contextualControlsContainer.append(stickerControlsDiv);
+}
+
+class HistoryManager {
+  private readonly undoStack: DrawingItem[][] = [];
+  private readonly redoStack: DrawingItem[][] = [];
+
+  get canUndo(): boolean {
+    return this.undoStack.length > 0;
+  }
+
+  get canRedo(): boolean {
+    return this.redoStack.length > 0;
+  }
+
+  commit(items: DrawingItem[]): void {
+    this.undoStack.push(cloneDrawingItems(items));
+    this.redoStack.length = 0;
+  }
+
+  undo(items: DrawingItem[]): DrawingItem[] {
+    if (!this.canUndo) {
+      return items;
+    }
+
+    this.redoStack.push(cloneDrawingItems(items));
+    return this.undoStack.pop() ?? items;
+  }
+
+  redo(items: DrawingItem[]): DrawingItem[] {
+    if (!this.canRedo) {
+      return items;
+    }
+
+    this.undoStack.push(cloneDrawingItems(items));
+    return this.redoStack.pop() ?? items;
   }
 }
 
-// drawing vars
+const historyManager = new HistoryManager();
+
+class CanvasRenderer {
+  constructor(
+    private readonly canvasElement: HTMLCanvasElement,
+    private readonly canvasContext: CanvasRenderingContext2D,
+  ) {}
+
+  drawItem(item: DrawingItem, ctx = this.canvasContext): void {
+    ctx.save();
+
+    if (item.kind === "path") {
+      if (item.points.length === 0) {
+        ctx.restore();
+        return;
+      }
+
+      ctx.beginPath();
+      ctx.moveTo(item.points[0].x, item.points[0].y);
+
+      for (let index = 1; index < item.points.length; index += 1) {
+        ctx.lineTo(item.points[index].x, item.points[index].y);
+      }
+
+      ctx.lineCap = item.appearance.cap;
+      ctx.lineJoin = item.appearance.join;
+      ctx.lineWidth = item.appearance.width;
+      ctx.strokeStyle = item.appearance.color;
+      ctx.stroke();
+    } else if (item.kind === "sticker") {
+      ctx.font = `${item.fontSize ?? DEFAULT_STICKER_SIZE}px sans-serif`;
+      ctx.textAlign = "center";
+      ctx.textBaseline = "middle";
+      ctx.fillText(item.content, item.x, item.y);
+    }
+
+    ctx.restore();
+  }
+
+  renderDocument(items: DrawingItem[], activeItem: DrawingItem | null): void {
+    this.canvasContext.clearRect(
+      0,
+      0,
+      this.canvasElement.width,
+      this.canvasElement.height,
+    );
+
+    for (const item of items) {
+      this.drawItem(item, this.canvasContext);
+    }
+
+    if (
+      activeItem && activeItem.kind === "path" && activeItem.points.length > 0
+    ) {
+      this.drawItem(activeItem, this.canvasContext);
+    }
+  }
+
+  exportAsPng(items: DrawingItem[], fileName: string): void {
+    const scale = 2;
+    const exportCanvas = document.createElement("canvas");
+    exportCanvas.width = this.canvasElement.width * scale;
+    exportCanvas.height = this.canvasElement.height * scale;
+
+    const exportContext = exportCanvas.getContext("2d")!;
+    exportContext.scale(scale, scale);
+
+    for (const item of items) {
+      this.drawItem(item, exportContext);
+    }
+
+    exportCanvas.toBlob((blob) => {
+      if (!blob) {
+        return;
+      }
+
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = fileName;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      URL.revokeObjectURL(url);
+    }, "image/png");
+  }
+}
+
+const renderer = new CanvasRenderer(canvas, context);
+
 let isDrawing = false;
 let activeItem: DrawingItem | null = null;
 let lastPoint: Point | null = null;
-const undoStack: DrawingItem[][] = [];
-const redoStack: DrawingItem[][] = [];
 
 function cloneDrawingItem(item: DrawingItem): DrawingItem {
   if (item.kind === "path") {
@@ -428,16 +550,16 @@ function cloneDrawingItem(item: DrawingItem): DrawingItem {
       points: item.points.map((point) => ({ ...point })),
       appearance: { ...item.appearance },
     };
-  } else {
-    return {
-      kind: "sticker",
-      id: item.id,
-      x: item.x,
-      y: item.y,
-      content: item.content,
-      fontSize: item.fontSize,
-    };
   }
+
+  return {
+    kind: "sticker",
+    id: item.id,
+    x: item.x,
+    y: item.y,
+    content: item.content,
+    fontSize: item.fontSize,
+  };
 }
 
 function cloneDrawingItems(items: DrawingItem[]): DrawingItem[] {
@@ -445,8 +567,8 @@ function cloneDrawingItems(items: DrawingItem[]): DrawingItem[] {
 }
 
 function updateHistoryButtons() {
-  const canUndo = undoStack.length > 0;
-  const canRedo = redoStack.length > 0;
+  const canUndo = historyManager.canUndo;
+  const canRedo = historyManager.canRedo;
 
   undoButton.disabled = !canUndo;
   undoButton.setAttribute("aria-disabled", String(!canUndo));
@@ -462,51 +584,10 @@ function getCanvasPoint(event: PointerEvent): Point {
   };
 }
 
-function drawItem(item: DrawingItem, ctx: CanvasRenderingContext2D) {
-  ctx.save();
-  if (item.kind === "path") {
-    if (item.points.length === 0) {
-      ctx.restore();
-      return;
-    }
-
-    ctx.beginPath();
-    ctx.moveTo(item.points[0].x, item.points[0].y);
-
-    for (let index = 1; index < item.points.length; index += 1) {
-      ctx.lineTo(item.points[index].x, item.points[index].y);
-    }
-
-    ctx.lineCap = item.appearance.cap;
-    ctx.lineJoin = item.appearance.join;
-    ctx.lineWidth = item.appearance.width;
-    ctx.strokeStyle = item.appearance.color;
-    ctx.stroke();
-  } else if (item.kind === "sticker") {
-    // render them sicker
-    ctx.font = `${item.fontSize || 32}px sans-serif`;
-    ctx.textAlign = "center";
-    ctx.textBaseline = "middle";
-    ctx.fillText(item.content, item.x, item.y);
-  }
-  ctx.restore();
-}
-
 function renderDocument() {
-  context.clearRect(0, 0, canvas.width, canvas.height);
-
-  for (const item of documentCollection.items) {
-    drawItem(item, context);
-  }
-
-  if (
-    activeItem && activeItem.kind === "path" && activeItem.points.length > 0
-  ) {
-    drawItem(activeItem, context);
-  }
+  renderer.renderDocument(documentCollection.items, activeItem);
 }
 
-// finish stroke capture
 function finishStroke(event: PointerEvent) {
   if (!isDrawing || !activeItem) {
     return;
@@ -517,12 +598,11 @@ function finishStroke(event: PointerEvent) {
   }
 
   if (activeItem.kind === "path" && activeItem.points.length > 0) {
-    undoStack.push(cloneDrawingItems(documentCollection.items));
+    historyManager.commit(documentCollection.items);
     documentCollection.items = [
       ...documentCollection.items,
       cloneDrawingItem(activeItem),
     ];
-    redoStack.length = 0;
   }
 
   isDrawing = false;
@@ -532,47 +612,43 @@ function finishStroke(event: PointerEvent) {
   updateHistoryButtons();
 }
 
-// start stroke capture
 canvas.addEventListener("pointerdown", (event) => {
   event.preventDefault();
+
   const point = getCanvasPoint(event);
 
-  if (activeTool.type === "pen") {
-    // if pen start a stroke and apply all the settings
+  if (toolCatalog.activeTool.type === "pen") {
     activeItem = {
       kind: "path",
       id: crypto.randomUUID(),
       points: [point],
-      appearance: activeTool.appearance
-        ? { ...activeTool.appearance }
-        : { ...toolAppearance },
+      appearance: toolCatalog.activeTool.appearance
+        ? { ...toolCatalog.activeTool.appearance }
+        : { ...DEFAULT_PEN_APPEARANCE },
     };
     isDrawing = true;
     lastPoint = point;
     canvas.setPointerCapture(event.pointerId);
     renderDocument();
-  } else if (activeTool.type === "sticker") {
-    // if sticker Commit directly to history on click
-    undoStack.push(cloneDrawingItems(documentCollection.items));
-
-    const newSticker: StickerItem = {
-      kind: "sticker",
-      id: crypto.randomUUID(),
-      x: point.x,
-      y: point.y,
-      content: activeTool.content || "⭐",
-      fontSize: activeTool.fontSize || 32,
-    };
-
-    documentCollection.items = [...documentCollection.items, newSticker];
-    redoStack.length = 0;
-
-    renderDocument();
-    updateHistoryButtons();
+    return;
   }
+
+  historyManager.commit(documentCollection.items);
+
+  const newSticker: StickerItem = {
+    kind: "sticker",
+    id: crypto.randomUUID(),
+    x: point.x,
+    y: point.y,
+    content: toolCatalog.activeTool.content || DEFAULT_STICKER_CONTENT,
+    fontSize: toolCatalog.activeTool.fontSize || DEFAULT_STICKER_SIZE,
+  };
+
+  documentCollection.items = [...documentCollection.items, newSticker];
+  renderDocument();
+  updateHistoryButtons();
 });
 
-// continued capture of stroke
 canvas.addEventListener("pointermove", (event) => {
   if (!isDrawing || !activeItem || activeItem.kind !== "path" || !lastPoint) {
     return;
@@ -584,15 +660,12 @@ canvas.addEventListener("pointermove", (event) => {
   renderDocument();
 });
 
-// detections to stop capturing stroke
 canvas.addEventListener("pointerup", finishStroke);
 canvas.addEventListener("pointerleave", (event) => {
   if (isDrawing && !canvas.hasPointerCapture(event.pointerId)) {
     finishStroke(event);
   }
 });
-
-// cancle stroke
 canvas.addEventListener("pointercancel", (event) => {
   if (canvas.hasPointerCapture(event.pointerId)) {
     canvas.releasePointerCapture(event.pointerId);
