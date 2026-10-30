@@ -1,6 +1,14 @@
-# D2 starter
+# D2 Sketchpad
 
-Max Marinescu, Zander Matthews
+A drawing app made with HTML canvas and typescript, create by: Max Marinescu, Zander Matthews
+
+## How to use:
+
+- Select a tool from the tool bar bellow the canvas and click on the canvas to draw either the stroke or sticker onto the page.
+- You can use the undo and redo buttons to undo and redo the last action you have done to the canvas
+- you can modify any tool by clicking on it and then adjusting the settings bellow it. Modifying the color and thickness of markers, or changing the size and stickers text.
+- you can reset the canvas to a blank canvas by pushing the clear document button.
+- lastly you can export your creation as a png image with the Export as PNG button.
 
 ## Credits
 
