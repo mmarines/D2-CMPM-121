@@ -191,8 +191,44 @@ redoButton.addEventListener("click", () => {
   updateHistoryButtons();
 });
 
-// actually add history controlls to the page
-historyControls.append(clearDocumentButton, undoButton, redoButton);
+// setup PNG export button and logic
+const exportButton = document.createElement("button");
+exportButton.type = "button";
+exportButton.textContent = "Export as PNG";
+exportButton.addEventListener("click", () => {
+  const scale = 2;
+  const exportCanvas = document.createElement("canvas");
+  exportCanvas.width = documentCollection.width * scale;
+  exportCanvas.height = documentCollection.height * scale;
+  const exportCtx = exportCanvas.getContext("2d")!;
+  // map document coordinates to the larger export canvas dimensions
+  exportCtx.scale(scale, scale);
+
+  // replay committed command objects against the export context
+  for (const item of documentCollection.items) {
+    drawItem(item, exportCtx);
+  }
+
+  exportCanvas.toBlob((blob) => {
+    if (!blob) return;
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = "drawing-export.png";
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
+  }, "image/png");
+});
+
+// actually add history controlls to the page (and also the export button)
+historyControls.append(
+  clearDocumentButton,
+  undoButton,
+  redoButton,
+  exportButton,
+);
 app.append(historyControls);
 
 // setup tool pallet
@@ -426,42 +462,47 @@ function getCanvasPoint(event: PointerEvent): Point {
   };
 }
 
-function drawItem(item: DrawingItem) {
+function drawItem(item: DrawingItem, ctx: CanvasRenderingContext2D) {
+  ctx.save();
   if (item.kind === "path") {
-    if (item.points.length === 0) return;
-
-    context.beginPath();
-    context.moveTo(item.points[0].x, item.points[0].y);
-
-    for (let index = 1; index < item.points.length; index += 1) {
-      context.lineTo(item.points[index].x, item.points[index].y);
+    if (item.points.length === 0) {
+      ctx.restore();
+      return;
     }
 
-    context.lineCap = item.appearance.cap;
-    context.lineJoin = item.appearance.join;
-    context.lineWidth = item.appearance.width;
-    context.strokeStyle = item.appearance.color;
-    context.stroke();
+    ctx.beginPath();
+    ctx.moveTo(item.points[0].x, item.points[0].y);
+
+    for (let index = 1; index < item.points.length; index += 1) {
+      ctx.lineTo(item.points[index].x, item.points[index].y);
+    }
+
+    ctx.lineCap = item.appearance.cap;
+    ctx.lineJoin = item.appearance.join;
+    ctx.lineWidth = item.appearance.width;
+    ctx.strokeStyle = item.appearance.color;
+    ctx.stroke();
   } else if (item.kind === "sticker") {
     // render them sicker
-    context.font = `${item.fontSize || 32}px sans-serif`;
-    context.textAlign = "center";
-    context.textBaseline = "middle";
-    context.fillText(item.content, item.x, item.y);
+    ctx.font = `${item.fontSize || 32}px sans-serif`;
+    ctx.textAlign = "center";
+    ctx.textBaseline = "middle";
+    ctx.fillText(item.content, item.x, item.y);
   }
+  ctx.restore();
 }
 
 function renderDocument() {
   context.clearRect(0, 0, canvas.width, canvas.height);
 
   for (const item of documentCollection.items) {
-    drawItem(item);
+    drawItem(item, context);
   }
 
   if (
     activeItem && activeItem.kind === "path" && activeItem.points.length > 0
   ) {
-    drawItem(activeItem);
+    drawItem(activeItem, context);
   }
 }
 
